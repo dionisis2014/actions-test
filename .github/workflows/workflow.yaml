@@ -1,0 +1,17 @@
+name: Hello, World 
+# Controls when the workflow will run, in this case manually
+on: workflow_dispatch
+ 
+jobs:
+  PrintHelloWorld:
+    name: Print Hello, World!
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo "Hello, World!" > file.txt
+    - run: ls
+  PrintDirectory:
+    name: Print directory
+    needs: PrintHelloWorld
+    runs-on: ubuntu-latest
+    steps:
+    - run: ls
