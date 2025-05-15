@@ -7,14 +7,9 @@ on:
 name: release
 
 jobs:
-  pypi:
-    name: upload release to TestPyPI
+  build:
+    name: Build package
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://test.pypi.org/p/nirahmq/
-    permissions:
-      id-token: write
     steps:
       - name: checkout
         uses: actions/checkout@v3
@@ -26,6 +21,27 @@ jobs:
         run: python -m pip install -U build
       - name: build
         run: python -m build
+      - name: store packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+  pypi:
+    name: upload release to TestPyPI
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    environment:
+      name: pypi
+      url: https://test.pypi.org/p/nirahmq/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
       - name: publish
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
