@@ -10,6 +10,7 @@ jobs:
   pypi:
     name: upload release to TestPyPI
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     steps:
