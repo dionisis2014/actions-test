@@ -1,1 +1,1 @@
-from .components import *
+from nirahmq.components.components import *

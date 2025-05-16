@@ -5,10 +5,10 @@ from typing import Self
 
 from pydantic import SerializeAsAny, conlist, model_validator
 
-from .components import BareEntityBase
-from .components.base import Availability, ComponentBase, EntityBase
-from .mqtt import MQTTClient, QoS
-from .utils import BaseModel, Optional, Unset, sanitize_string
+from nirahmq.components import BareEntityBase
+from nirahmq.components.base import Availability, ComponentBase, EntityBase
+from nirahmq.mqtt import MQTTClient, QoS
+from nirahmq.utils import BaseModel, Optional, Unset, sanitize_string
 
 
 class DeviceInfo(BaseModel):
@@ -26,7 +26,7 @@ class DeviceInfo(BaseModel):
     via_device: Optional[str] = Unset
 
     @model_validator(mode='after')
-    def check_identifiers(self) -> Self:
+    def _check_identifiers(self) -> Self:
         if self.identifiers is None and self.connections is None:
             raise ValueError("At least one of `identifiers` or `connections` must be set")
         return self

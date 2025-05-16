@@ -8,19 +8,18 @@ from paho.mqtt import client as pmq_client
 from paho.mqtt.subscribeoptions import SubscribeOptions
 from pydantic import Field
 
-
-class QoS(IntEnum):
-    MOST = 0  # At most once
-    LEAST = 1  # At least once
-    EXACTLY = 2  # Exactly once
-
-
 type Topic = Annotated[str, Field(pattern=r"^(?:(?:~/)?[a-zA-Z0-9_-]+)(?:/[a-zA-Z0-9_-]+)*$")]
 
 
 def check_mqtt_error(func: Callable[[...], pmq.enums.MQTTErrorCode], *args, **kwargs) -> None:
     if (err := func(*args, **kwargs)) != pmq.enums.MQTTErrorCode.MQTT_ERR_SUCCESS:
         raise RuntimeError(f"Failed to call function {func.__name__}: {err}")
+
+
+class QoS(IntEnum):
+    MOST = 0  # At most once
+    LEAST = 1  # At least once
+    EXACTLY = 2  # Exactly once
 
 
 class MQTTClient:

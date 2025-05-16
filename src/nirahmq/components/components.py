@@ -6,11 +6,12 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import AnyUrl, Field, confloat, conlist, constr, field_validator, \
     model_validator
 
-from ..components.base import BareEntityBase, CallableComponent, CommandTopic, ComponentBase, ComponentCallback, \
+import nirahmq.utils as utils
+from nirahmq.components.base import BareEntityBase, CallableComponent, CommandTopic, ComponentBase, ComponentCallback, \
     ComponentDefaultCallback, EntityBase, StateTopic, StatefulComponent
-from ..enums import *
-from ..mqtt import MQTTClient, QoS
-from ..utils import Optional, Regex, Required, Unset
+from nirahmq.enums import *
+from nirahmq.mqtt import MQTTClient, QoS
+from nirahmq.utils import Optional, Regex, Required, Unset
 
 
 class AlarmControlPanel(StatefulComponent, CallableComponent, EntityBase):
@@ -39,8 +40,8 @@ class AlarmControlPanel(StatefulComponent, CallableComponent, EntityBase):
 
     command_callback: Optional[ComponentCallback['AlarmControlPanel']] = ComponentDefaultCallback
 
-    def set_state(self, value: AlarmControlPanelState | None) -> None:
-        self._publish(self.state_topic, 'None' if value is None else str(value))
+    def set_state(self, value: Optional[AlarmControlPanelState]) -> None:
+        self.publish(self.state_topic, 'None' if value is Unset else str(value))
 
 
 class BinarySensor(StatefulComponent, EntityBase):
@@ -55,8 +56,8 @@ class BinarySensor(StatefulComponent, EntityBase):
     state_topic: StateTopic
     value_template: Optional[str] = Unset
 
-    def set_state(self, state: bool | None) -> None:
-        self._publish(self.state_topic, 'None' if state is None else (self.payload_on if state else self.payload_off))
+    def set_state(self, state: Optional[bool]) -> None:
+        self.publish(self.state_topic, 'None' if state is Unset else (self.payload_on if state else self.payload_off))
 
 
 class Button(CallableComponent, EntityBase):
@@ -84,7 +85,7 @@ class Camera(StatefulComponent, EntityBase):
             self.__pydantic_fields_set__.remove('image_encoding')
 
     def set_image(self, data: str | bytes | bytearray) -> None:
-        self._publish(self.topic, data)
+        self.publish(self.topic, data)
 
 
 class Cover(StatefulComponent, CallableComponent, EntityBase):
@@ -129,31 +130,31 @@ class Cover(StatefulComponent, CallableComponent, EntityBase):
     tilt_command_callback: Optional[ComponentCallback['Cover']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_position_topic(self) -> Self:
+    def _check_position_topic(self) -> Self:
         if 'set_position_topic' in self.model_fields_set and 'position_topic' not in self.model_fields_set:
             raise ValueError('`position_topic` must be set to use `set_position_topic`')
         return self
 
-    def set_state(self, state: CoverState | None) -> None:
+    def set_state(self, state: Optional[CoverState]) -> None:
         match state:
-            case None:
-                self._publish(self.state_topic, 'None')
+            case utils.Unset:  # Weird Python `match` wizardry
+                self.publish(self.state_topic, 'None')
             case CoverState.CLOSED:
-                self._publish(self.state_topic, self.state_closed)
+                self.publish(self.state_topic, self.state_closed)
             case CoverState.CLOSING:
-                self._publish(self.state_topic, self.state_closing)
+                self.publish(self.state_topic, self.state_closing)
             case CoverState.OPEN:
-                self._publish(self.state_topic, self.state_open)
+                self.publish(self.state_topic, self.state_open)
             case CoverState.OPENING:
-                self._publish(self.state_topic, self.state_opening)
+                self.publish(self.state_topic, self.state_opening)
             case CoverState.STOPPED:
-                self._publish(self.state_topic, self.state_stopped)
+                self.publish(self.state_topic, self.state_stopped)
 
     def set_position(self, position: int) -> None:
-        self._publish(self.position_topic, min(max(position, self.position_closed), self.position_open))
+        self.publish(self.position_topic, min(max(position, self.position_closed), self.position_open))
 
     def set_tilt(self, tilt: int) -> None:
-        self._publish(self.tilt_status_topic, min(max(tilt, self.tilt_min), self.tilt_max))
+        self.publish(self.tilt_status_topic, min(max(tilt, self.tilt_min), self.tilt_max))
 
 
 class DeviceTracker(StatefulComponent, BareEntityBase):
@@ -166,10 +167,10 @@ class DeviceTracker(StatefulComponent, BareEntityBase):
     state_topic: Optional[StateTopic] = Unset
     value_template: Optional[str] = Unset
 
-    def set_state(self, state: bool | None) -> None:
-        self._publish(
+    def set_state(self, state: Optional[bool]) -> None:
+        self.publish(
             self.state_topic,
-            self.payload_reset if state is None else (self.payload_home if state else self.payload_not_home)
+            self.payload_reset if state is Unset else (self.payload_home if state else self.payload_not_home)
         )
 
 
@@ -185,7 +186,7 @@ class DeviceTrigger(StatefulComponent, ComponentBase):
     value_template: Optional[str] = Unset
 
     def trigger(self, payload: str) -> None:
-        self._publish(self.topic, payload)
+        self.publish(self.topic, payload)
 
 
 class Event(StatefulComponent, EntityBase):
@@ -201,7 +202,7 @@ class Event(StatefulComponent, EntityBase):
             data = {'event_type': type}
             if attr is not None:
                 data.update(attr)
-            self._publish(self.state_topic, json.dumps(data))
+            self.publish(self.state_topic, json.dumps(data))
 
 
 class Fan(StatefulComponent, CallableComponent, EntityBase):
@@ -248,34 +249,34 @@ class Fan(StatefulComponent, CallableComponent, EntityBase):
     preset_mode_command_callback: Optional[ComponentCallback['Fan']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_preset_modes(self) -> Self:
+    def _check_preset_modes(self) -> Self:
         if ('preset_modes' in self.model_fields_set) != ('preset_mode_command_topic' in self.model_fields_set):
             raise ValueError('`preset_mode_command_topic` and `preset_modes` must both be set')
         return self
 
-    def set_state(self, state: bool | None) -> None:
-        self._publish(self.state_topic, 'None' if state is None else (self.payload_on if state else self.payload_off))
+    def set_state(self, state: Optional[bool]) -> None:
+        self.publish(self.state_topic, 'None' if state is Unset else (self.payload_on if state else self.payload_off))
 
     def set_direction(self, direction: bool) -> None:
-        self._publish(self.direction_state_topic, 'forward' if direction else 'reverse')
+        self.publish(self.direction_state_topic, 'forward' if direction else 'reverse')
 
     def set_oscillation(self, oscillation: bool) -> None:
-        self._publish(
+        self.publish(
             self.oscillation_state_topic,
             self.payload_oscillation_on if oscillation else self.payload_oscillation_off
         )
 
-    def set_percentage(self, percentage: int | None) -> None:
-        if percentage is None:
-            self._publish(self.percentage_state_topic, self.payload_reset_percentage)
+    def set_percentage(self, percentage: Optional[int]) -> None:
+        if percentage is Unset:
+            self.publish(self.percentage_state_topic, self.payload_reset_percentage)
         else:
-            self._publish(self.percentage_state_topic, min(max(percentage, self.speed_range_min), self.speed_range_max))
+            self.publish(self.percentage_state_topic, min(max(percentage, self.speed_range_min), self.speed_range_max))
 
-    def set_mode(self, mode: str | None) -> None:
-        if mode is None:
-            self._publish(self.preset_mode_state_topic, self.payload_reset_preset_mode)
+    def set_mode(self, mode: Optional[str]) -> None:
+        if mode is Unset:
+            self.publish(self.preset_mode_state_topic, self.payload_reset_preset_mode)
         else:
-            self._publish(self.preset_mode_state_topic, mode)
+            self.publish(self.preset_mode_state_topic, mode)
 
 
 class Humidifier(StatefulComponent, CallableComponent, EntityBase):
@@ -315,35 +316,35 @@ class Humidifier(StatefulComponent, CallableComponent, EntityBase):
     mode_command_callback: Optional[ComponentCallback['Humidifier']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_modes(self) -> Self:
+    def _check_modes(self) -> Self:
         if ('modes' in self.model_fields_set) == (self.mode_command_topic is Unset):
             raise ValueError('`mode_command_topic` and `modes` must both be set')
         return self
 
-    def set_state(self, state: bool | None) -> None:
-        self._publish(self.state_topic, 'None' if state is None else (self.payload_on if state else self.payload_off))
+    def set_state(self, state: Optional[bool]) -> None:
+        self.publish(self.state_topic, 'None' if state is Unset else (self.payload_on if state else self.payload_off))
 
     def set_action(self, action: HumidifierAction) -> None:
-        self._publish(self.action_topic, str(action))
+        self.publish(self.action_topic, str(action))
 
-    def set_current_humidity(self, humidity: float | None) -> None:
-        if humidity is None:
-            self._publish(self.target_humidity_state_topic, self.payload_reset_humidity)
+    def set_current_humidity(self, humidity: Optional[float]) -> None:
+        if humidity is Unset:
+            self.publish(self.target_humidity_state_topic, self.payload_reset_humidity)
         else:
             # Clamp to valid humidity values values
-            self._publish(self.current_humidity_topic, min(max(humidity, 0.0), 100.0))
+            self.publish(self.current_humidity_topic, min(max(humidity, 0.0), 100.0))
 
-    def set_target_humidity(self, humidity: float | None) -> None:
-        if humidity is None:
-            self._publish(self.target_humidity_state_topic, self.payload_reset_humidity)
+    def set_target_humidity(self, humidity: Optional[float]) -> None:
+        if humidity is Unset:
+            self.publish(self.target_humidity_state_topic, self.payload_reset_humidity)
         else:
-            self._publish(self.target_humidity_state_topic, min(max(humidity, self.min_humidity), self.max_humidity))
+            self.publish(self.target_humidity_state_topic, min(max(humidity, self.min_humidity), self.max_humidity))
 
-    def set_mode(self, mode: HumidifierMode | str | None) -> None:
-        if mode is None:
-            self._publish(self.target_humidity_state_topic, self.payload_reset_mode)
+    def set_mode(self, mode: Optional[HumidifierMode | str]) -> None:
+        if mode is Unset:
+            self.publish(self.target_humidity_state_topic, self.payload_reset_mode)
         else:
-            self._publish(self.mode_state_topic, str(mode))
+            self.publish(self.mode_state_topic, str(mode))
 
 
 class Image(StatefulComponent, EntityBase):
@@ -356,7 +357,7 @@ class Image(StatefulComponent, EntityBase):
     url_topic: Optional[StateTopic] = Unset
 
     @model_validator(mode='after')
-    def check_content_type_mutex(self) -> Self:
+    def _check_content_type_mutex(self) -> Self:
         if 'content_type' in self.model_fields_set and 'url_topic' in self.model_fields_set:
             raise ValueError('`content_type` and `url_topic` are mutually exclusive')
         if 'content_type' not in self.model_fields_set and 'url_topic' not in self.model_fields_set:
@@ -370,10 +371,10 @@ class Image(StatefulComponent, EntityBase):
             self.__pydantic_fields_set__.remove('image_encoding')
 
     def set_image(self, data: str | bytes | bytearray) -> None:
-        self._publish(self.image_topic, data)
+        self.publish(self.image_topic, data)
 
     def set_url(self, url: AnyUrl) -> None:
-        self._publish(self.url_topic, str(url))
+        self.publish(self.url_topic, str(url))
 
 
 class HVAC(StatefulComponent, CallableComponent, EntityBase):
@@ -465,50 +466,50 @@ class HVAC(StatefulComponent, CallableComponent, EntityBase):
     temperature_low_command_callback: Optional[ComponentCallback['HVAC']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_preset_modes(self) -> Self:
+    def _check_preset_modes(self) -> Self:
         if ('preset_modes' in self.model_fields_set) != ('preset_mode_command_topic' in self.model_fields_set):
             raise ValueError('`preset_mode_command_topic` and `preset_modes` must both be set')
         return self
 
     def set_action(self, action: Action) -> None:
-        self._publish(self.action_topic, str(action))
+        self.publish(self.action_topic, str(action))
 
-    def set_current_humidity(self, humidity: float | None) -> None:
-        self._publish(self.current_humidity_topic, 'None' if humidity is None else min(max(humidity, 0.0), 100.0))
+    def set_current_humidity(self, humidity: Optional[float]) -> None:
+        self.publish(self.current_humidity_topic, 'None' if humidity is Unset else min(max(humidity, 0.0), 100.0))
 
-    def set_current_temperature(self, temperature: float | None) -> None:
-        self._publish(self.current_temperature_topic, 'None' if temperature is None else temperature)
+    def set_current_temperature(self, temperature: Optional[float]) -> None:
+        self.publish(self.current_temperature_topic, 'None' if temperature is Unset else temperature)
 
-    def set_fan_mode(self, mode: HVACFanMode | str | None) -> None:
-        self._publish(self.fan_mode_state_topic, 'None' if mode is None else str(mode))
+    def set_fan_mode(self, mode: Optional[HVACFanMode | str]) -> None:
+        self.publish(self.fan_mode_state_topic, 'None' if mode is Unset else str(mode))
 
     # This must be called after a `power_command_topic` update because it is not optimistic
-    def set_mode(self, mode: HVACMode | None) -> None:
-        self._publish(self.mode_state_topic, 'None' if mode is None else str(mode))
+    def set_mode(self, mode: Optional[HVACMode]) -> None:
+        self.publish(self.mode_state_topic, 'None' if mode is Unset else str(mode))
 
-    def set_preset_mode(self, mode: HVACPresetMode | str | None) -> None:
-        self._publish(self.preset_mode_state_topic, 'None' if mode is None else str(mode))
+    def set_preset_mode(self, mode: Optional[HVACPresetMode | str]) -> None:
+        self.publish(self.preset_mode_state_topic, 'None' if mode is Unset else str(mode))
 
     def set_swing_horizontal_mode(self, mode: str) -> None:
-        self._publish(self.swing_horizontal_mode_state_topic, mode)
+        self.publish(self.swing_horizontal_mode_state_topic, mode)
 
     def set_swing_mode(self, mode: str) -> None:
-        self._publish(self.swing_mode_state_topic, mode)
+        self.publish(self.swing_mode_state_topic, mode)
 
-    def set_target_humidity(self, humidity: float | None) -> None:
-        self._publish(
+    def set_target_humidity(self, humidity: Optional[float]) -> None:
+        self.publish(
             self.target_humidity_state_topic,
-            'None' if humidity is None else min(max(humidity, self.min_humidity), self.max_humidity)
+            'None' if humidity is Unset else min(max(humidity, self.min_humidity), self.max_humidity)
         )
 
     def set_high_temperature(self, temperature: float) -> None:
-        self._publish(self.temperature_high_state_topic, temperature)
+        self.publish(self.temperature_high_state_topic, temperature)
 
     def set_low_temperature(self, temperature: float) -> None:
-        self._publish(self.temperature_low_state_topic, temperature)
+        self.publish(self.temperature_low_state_topic, temperature)
 
-    def set_target_temperature(self, temperature: float | None) -> None:
-        self._publish(self.temperature_state_topic, 'None' if temperature is None else temperature)
+    def set_target_temperature(self, temperature: Optional[float]) -> None:
+        self.publish(self.temperature_state_topic, 'None' if temperature is Unset else temperature)
 
 
 class LawnMower(StatefulComponent, CallableComponent, EntityBase):
@@ -531,9 +532,9 @@ class LawnMower(StatefulComponent, CallableComponent, EntityBase):
     pause_command_callback: Optional[ComponentCallback['LawnMower']] = ComponentDefaultCallback
     start_mowing_command_callback: Optional[ComponentCallback['LawnMower']] = ComponentDefaultCallback
 
-    def set_state(self, state: LawnMowerState | None) -> None:
+    def set_state(self, state: Optional[LawnMowerState]) -> None:
         # TODO: Docs say `none` not `None`
-        self._publish(self.activity_state_topic, 'None' if state is None else str(state))
+        self.publish(self.activity_state_topic, 'None' if state is Unset else str(state))
 
 
 class Light(StatefulComponent, CallableComponent, EntityBase):
@@ -564,7 +565,7 @@ class Light(StatefulComponent, CallableComponent, EntityBase):
 
     @field_validator('supported_color_modes', mode='after')
     @classmethod
-    def check_supported_color_modes(cls, value: list[LightColorMode]) -> list[LightColorMode]:
+    def _check_supported_color_modes(cls, value: list[LightColorMode]) -> list[LightColorMode]:
         if value is not Unset:
             if LightColorMode.ONOFF in value and len(value) > 1:
                 raise ValueError(f"Supported color mode {LightColorMode.ONOFF} is exclusive")
@@ -573,14 +574,14 @@ class Light(StatefulComponent, CallableComponent, EntityBase):
         return value
 
     def set_state(
-            self, state: bool | None,
+            self, state: Optional[bool],
             color_mode: LightColorMode | None = None,
             color: tuple[int | float, ...] | None = None,
             brightness: int | None = None,
             color_temp: int | None = None,
             effect: str | None = None
     ) -> None:
-        data = {'state': None if state is None else ('ON' if state else 'OFF')}
+        data = {'state': None if state is Unset else ('ON' if state else 'OFF')}
         if color_mode is not None:
             data['color_mode'] = str(color_mode)
             if color is not None:
@@ -620,7 +621,7 @@ class Light(StatefulComponent, CallableComponent, EntityBase):
                 data['color_temp'] = color_temp
         if effect is not None:
             data['effect'] = effect
-        self._publish(self.state_topic, json.dumps(data))
+        self.publish(self.state_topic, json.dumps(data))
 
 
 class Lock(StatefulComponent, CallableComponent, EntityBase):
@@ -646,20 +647,20 @@ class Lock(StatefulComponent, CallableComponent, EntityBase):
 
     command_callback: Optional[ComponentCallback['Lock']] = ComponentDefaultCallback
 
-    def set_state(self, state: LockState | None) -> None:
+    def set_state(self, state: Optional[LockState]) -> None:
         match state:
-            case None:
-                self._publish(self.state_topic, 'None')
+            case utils.Unset:  # Weird Python `match` wizardry
+                self.publish(self.state_topic, 'None')
             case LockState.JAMMED:
-                self._publish(self.state_topic, self.state_jammed)
+                self.publish(self.state_topic, self.state_jammed)
             case LockState.LOCKED:
-                self._publish(self.state_topic, self.state_locked)
+                self.publish(self.state_topic, self.state_locked)
             case LockState.LOCKING:
-                self._publish(self.state_topic, self.state_locking)
+                self.publish(self.state_topic, self.state_locking)
             case LockState.UNLOCKED:
-                self._publish(self.state_topic, self.state_unlocked)
+                self.publish(self.state_topic, self.state_unlocked)
             case LockState.UNLOCKING:
-                self._publish(self.state_topic, self.state_unlocking)
+                self.publish(self.state_topic, self.state_unlocking)
 
 
 class Notify(CallableComponent, EntityBase):
@@ -684,7 +685,7 @@ class Number(StatefulComponent, CallableComponent, EntityBase):
     payload_reset: Optional[str] = 'None'
     retain: Optional[bool] = False
     state_topic: Optional[StateTopic] = Unset
-    step: Optional[float] = Field(1.0, ge=0.001)
+    step: Optional[float] = Field(default=1.0, ge=0.001)
     unit_of_measurement: Optional[str | None] = Unset
     value_template: Optional[str] = Unset
 
@@ -694,7 +695,7 @@ class Number(StatefulComponent, CallableComponent, EntityBase):
     command_callback: Optional[ComponentCallback['Number']] = ComponentDefaultCallback
 
     def set_number(self, value: float | int) -> None:
-        self._publish(self.state_topic, min(max(value, self.min), self.max))
+        self.publish(self.state_topic, min(max(value, self.min), self.max))
 
 
 class Scene(CallableComponent, EntityBase):
@@ -724,11 +725,11 @@ class Select(StatefulComponent, CallableComponent, EntityBase):
 
     def set_option(self, value: str) -> None:
         if value in self.options:
-            self._publish(self.state_topic, value)
+            self.publish(self.state_topic, value)
 
     def set_index(self, index: int) -> None:
         if 0 <= index < len(self.options):
-            self._publish(self.state_topic, self.options[index])
+            self.publish(self.state_topic, self.options[index])
 
 
 class Sensor(StatefulComponent, EntityBase):
@@ -746,7 +747,7 @@ class Sensor(StatefulComponent, EntityBase):
     value_template: Optional[str] = Unset
 
     @model_validator(mode='after')
-    def check_stuff(self) -> Self:
+    def _check_stuff(self) -> Self:
         if self.last_reset_value_template is not Unset and self.device_class != SensorStateClass.TOTAL:
             raise ValueError('State class must be `total` when `last_reset_value_template` is set')
         if self.options is not Unset:
@@ -758,8 +759,8 @@ class Sensor(StatefulComponent, EntityBase):
                 raise ValueError('`unit_of_measurement` and `options` are mutually exclusive')
         return self
 
-    def set_value(self, value: float | int | str | None) -> None:
-        self._publish(self.state_topic, 'None' if value is None else value)
+    def set_value(self, value: Optional[float | int | str]) -> None:
+        self.publish(self.state_topic, 'None' if value is Unset else value)
 
 
 class Siren(StatefulComponent, CallableComponent, EntityBase):
@@ -788,19 +789,19 @@ class Siren(StatefulComponent, CallableComponent, EntityBase):
 
     def set_state(
             self,
-            state: bool | None,
+            state: Optional[bool],
             tone: str | None = None,
             duration: int | None = None,
             volume: int | None = None
     ) -> None:
-        data = {'state': state}
+        data = {'state': None if state is Unset else state}
         if tone is not None and self.available_tones is not Unset and tone in self.available_tones:
             data['tone'] = tone
         if duration is not None and self.support_duration:
             data['duration'] = duration
         if volume is not None and self.support_volume_set:
             data['volume_level'] = volume
-        self._publish(self.state_topic, json.dumps(data))
+        self.publish(self.state_topic, json.dumps(data))
 
 
 class Switch(StatefulComponent, CallableComponent, EntityBase):
@@ -824,8 +825,8 @@ class Switch(StatefulComponent, CallableComponent, EntityBase):
 
     command_callback: Optional[ComponentCallback['Switch']] = ComponentDefaultCallback
 
-    def set_state(self, state: bool | None) -> None:
-        self._publish(self.state_topic, 'None' if state is None else (self.payload_on if state else self.payload_off))
+    def set_state(self, state: Optional[bool]) -> None:
+        self.publish(self.state_topic, 'None' if state is Unset else (self.payload_on if state else self.payload_off))
 
 
 class Update(StatefulComponent, CallableComponent, EntityBase):
@@ -872,7 +873,7 @@ class Update(StatefulComponent, CallableComponent, EntityBase):
             data['in_progress'] = in_progress
         if percentage is not None:
             data['update_percentage'] = percentage
-        self._publish(self.state_topic, json.dumps(data))
+        self.publish(self.state_topic, json.dumps(data))
 
 
 class TagScanner(StatefulComponent, ComponentBase):
@@ -883,7 +884,7 @@ class TagScanner(StatefulComponent, ComponentBase):
 
     # TODO: NFC stuff is outside the scope of this library. Maybe some helper method will be implemented in the future.
     def set_state(self, data: str) -> None:
-        self._publish(self.topic, data)
+        self.publish(self.topic, data)
 
 
 class Text(StatefulComponent, CallableComponent, EntityBase):
@@ -891,8 +892,8 @@ class Text(StatefulComponent, CallableComponent, EntityBase):
 
     command_template: Optional[str] = Unset
     command_topic: CommandTopic
-    max: Optional[int] = Field(255, gt=0)
-    min: Optional[int] = Field(0, ge=0)
+    max: Optional[int] = Field(default=255, gt=0)
+    min: Optional[int] = Field(default=0, ge=0)
     mode: Optional[TextMode] = TextMode.TEXT
     pattern: Optional[Regex] = Unset
     retain: Optional[bool] = False
@@ -902,7 +903,7 @@ class Text(StatefulComponent, CallableComponent, EntityBase):
     command_callback: Optional[ComponentCallback['Text']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_min_max(self) -> Self:
+    def _check_min_max(self) -> Self:
         if self.max <= self.min:
             raise ValueError('`max` must be larger than `min`')
         return self
@@ -911,7 +912,7 @@ class Text(StatefulComponent, CallableComponent, EntityBase):
         if self.min <= len(text) <= self.max:
             if self.pattern is not Unset and not re.match(self.pattern, text):
                 return
-            self._publish(self.state_topic, text)
+            self.publish(self.state_topic, text)
 
 
 class Vacuum(StatefulComponent, CallableComponent, BareEntityBase):
@@ -941,16 +942,16 @@ class Vacuum(StatefulComponent, CallableComponent, BareEntityBase):
 
     def set_state(
             self,
-            state: VacuumState | None,
+            state: Optional[VacuumState],
             battery_level: int | None = None,
             fan_speed: VacuumFanSpeed | None = None
     ) -> None:
-        data = {'state': None if state is None else str(state)}
+        data = {'state': None if state is Unset else str(state)}
         if battery_level is not None and VacuumFeature.BATTERY in self.supported_features:
             data['battery_level'] = battery_level
         if fan_speed is not None and VacuumFeature.FAN_SPEED in self.supported_features:
             data['fan_speed'] = str(fan_speed)
-        self._publish(self.state_topic, json.dumps(data))
+        self.publish(self.state_topic, json.dumps(data))
 
 
 class Valve(StatefulComponent, CallableComponent, EntityBase):
@@ -960,8 +961,8 @@ class Valve(StatefulComponent, CallableComponent, EntityBase):
     command_topic: Optional[CommandTopic] = Unset
     device_class: Optional[ValveClass | None] = Unset
     payload_stop: Optional[str] = Unset
-    position_closed: Optional[int] = Field(0, ge=0)
-    position_open: Optional[int] = Field(100, ge=0)
+    position_closed: Optional[int] = Field(default=0, ge=0)
+    position_open: Optional[int] = Field(default=100, ge=0)
     reports_position: Optional[bool] = False
     retain: Optional[bool] = False
     state_closing: Optional[str] = 'closing'
@@ -984,7 +985,7 @@ class Valve(StatefulComponent, CallableComponent, EntityBase):
     command_callback: Optional[ComponentCallback['Valve']] = ComponentDefaultCallback
 
     @model_validator(mode='after')
-    def check_stuff(self) -> Self:
+    def _check_stuff(self) -> Self:
         if self.reports_position:
             if self.payload_close is not Unset:
                 raise ValueError('`payload_close` and `reports_position` are mutually exclusive')
@@ -998,11 +999,11 @@ class Valve(StatefulComponent, CallableComponent, EntityBase):
 
     def set_position(
             self,
-            position: int | None,
+            position: Optional[int],
             state: Literal[ValveState.OPENING, ValveState.CLOSING] | None = None
     ) -> None:
-        if position is None:
-            self._publish(self.state_topic, 'None')
+        if position is Unset:
+            self.publish(self.state_topic, 'None')
         elif self.reports_position:
             data = {'position': min(max(position, self.position_closed), self.position_open)}
             match state:
@@ -1010,20 +1011,20 @@ class Valve(StatefulComponent, CallableComponent, EntityBase):
                     data['state'] = self.state_opening
                 case ValveState.CLOSING:
                     data['state'] = self.state_closing
-            self._publish(self.state_topic, json.dumps(data))
+            self.publish(self.state_topic, json.dumps(data))
 
-    def set_state(self, state: ValveState | None) -> None:
+    def set_state(self, state: Optional[ValveState]) -> None:
         match state:
-            case None:
-                self._publish(self.state_topic, 'None')
+            case utils.Unset:
+                self.publish(self.state_topic, 'None')
             case ValveState.OPEN:
-                self._publish(self.state_topic, self.state_open)
+                self.publish(self.state_topic, self.state_open)
             case ValveState.OPENING:
-                self._publish(self.state_topic, self.state_opening)
+                self.publish(self.state_topic, self.state_opening)
             case ValveState.CLOSED:
-                self._publish(self.state_topic, self.state_closed)
+                self.publish(self.state_topic, self.state_closed)
             case ValveState.CLOSING:
-                self._publish(self.state_topic, self.state_closing)
+                self.publish(self.state_topic, self.state_closing)
 
 
 class WaterHeater(StatefulComponent, CallableComponent, EntityBase):
@@ -1068,14 +1069,14 @@ class WaterHeater(StatefulComponent, CallableComponent, EntityBase):
     power_command_callback: Optional[ComponentCallback['WaterHeater']] = ComponentDefaultCallback
     temperature_command_callback: Optional[ComponentCallback['WaterHeater']] = ComponentDefaultCallback
 
-    def set_current_temperature(self, temperature: float | None) -> None:
-        self._publish(self.current_temperature_topic, 'None' if temperature is None else temperature)
+    def set_current_temperature(self, temperature: Optional[float]) -> None:
+        self.publish(self.current_temperature_topic, 'None' if temperature is Unset else temperature)
 
-    def set_mode(self, mode: WaterHeaterMode | None) -> None:
-        if mode is None:
-            self._publish(self.mode_command_topic, 'None')
+    def set_mode(self, mode: Optional[WaterHeaterMode]) -> None:
+        if mode is Unset:
+            self.publish(self.mode_command_topic, 'None')
         elif mode in self.modes:
-            self._publish(self.mode_command_topic, str(mode))
+            self.publish(self.mode_command_topic, str(mode))
 
-    def set_target_temperature(self, temperature: float | None) -> None:
-        self._publish(self.temperature_state_topic, 'None' if temperature is None else temperature)
+    def set_target_temperature(self, temperature: Optional[float]) -> None:
+        self.publish(self.temperature_state_topic, 'None' if temperature is Unset else temperature)

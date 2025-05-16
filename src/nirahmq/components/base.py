@@ -57,7 +57,7 @@ class ComponentBase(BaseModel):
                     return True
         return False
 
-    def _publish(
+    def publish(
             self,
             topic: Optional[str],
             payload: str | bytes | bytearray | int | float | None,
@@ -86,7 +86,7 @@ class StatefulComponent(ComponentBase):
         super()._on_remove()
 
         for topic in self._set_state_topics:
-            self._publish(getattr(self, topic), None)
+            self.publish(getattr(self, topic), None)
 
     @cached_property
     def _state_topics(self) -> tuple[str, ...]:
@@ -118,7 +118,7 @@ class CallableComponent(ComponentBase):
         for topic in self._command_mapping.keys():
             topic = getattr(self, topic)
             self._mqtt_client.remove_callback(self._abs_topic(topic))
-            self._publish(topic, None)
+            self.publish(topic, None)
 
     @cached_property
     def _command_topics(self) -> tuple[str, ...]:
@@ -186,11 +186,11 @@ class BareEntityBase(Availability, ComponentBase):
         super()._on_remove()
 
         for topic, _, _ in self.get_availability_topics():
-            self._publish(topic, None)
+            self.publish(topic, None)
 
     def set_availability(self, state: bool) -> None:
         for topic, online, offline in self.get_availability_topics():
-            self._publish(topic, online if state else offline)
+            self.publish(topic, online if state else offline)
 
 
 class EntityBase(BareEntityBase):

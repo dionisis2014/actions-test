@@ -5,19 +5,8 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel as PydanticBaseModel, ConfigDict
 
 
-class BaseModel(PydanticBaseModel):
-    model_config = ConfigDict(
-        validate_by_alias=True,
-        validate_by_name=True,
-        # use_enum_values=True,
-        validate_default=True,
-        strict=True,
-        extra='forbid'
-    )
-
-
 # Why in gods green earth does pydantic not allow to have an optional, non-nullable field
-# that is not defined by default? Hence, this monstrosity of a custom singleton type hint bellow.
+# that is not defined by default? Hence, this monstrosity of a custom singleton type hint below.
 class _Unset(Enum):
     token = None
 
@@ -46,3 +35,14 @@ def sanitize_string(string: str) -> str:
     # This handles any whitespaces that are at the beginning or at the end
     string = re.sub(r"[^a-zA-Z0-9_-]+", '', string)
     return string
+
+
+class BaseModel(PydanticBaseModel):
+    model_config = ConfigDict(
+        validate_by_alias=True,
+        validate_by_name=True,
+        # use_enum_values=True,
+        validate_default=True,
+        strict=True,
+        extra='forbid'
+    )
